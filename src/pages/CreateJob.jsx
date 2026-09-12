@@ -46,11 +46,13 @@ export default function CreateJob() {
 
     try {
       const payload = {
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         required_skills: skills,
+        experience_required: parseFloat(minExp) || 0,
         min_experience_years: parseFloat(minExp) || 0,
         education_level: eduLevel,
+        location: 'Remote',
       };
 
       const res = await jobsAPI.create(payload);
@@ -58,9 +60,12 @@ export default function CreateJob() {
       navigate(`/matching?jobId=${res.data.id}`);
     } catch (err) {
       console.error(err);
-      setError(
-        err.response?.data?.detail || 'Failed to create job posting. Please try again.'
-      );
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg || `${d.loc?.join('.')}: ${d.msg}`).join(', '));
+      } else {
+        setError(detail || 'Failed to create job posting. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
