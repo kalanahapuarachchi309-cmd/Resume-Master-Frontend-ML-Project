@@ -33,6 +33,23 @@ export default function ResumeUpload() {
   const [availableJobs, setAvailableJobs] = useState([]);
   const [targetJobId, setTargetJobId] = useState('');
   const [latestUploadedIds, setLatestUploadedIds] = useState([]);
+  const [syncingCloud, setSyncingCloud] = useState(false);
+
+  const handleSyncCloudinary = async () => {
+    setSyncingCloud(true);
+    setError('');
+    try {
+      await resumesAPI.syncCloudinary();
+      const res = await resumesAPI.getAll(0, 300);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setParsedResults(list);
+    } catch (err) {
+      console.error('Failed to sync Cloudinary resumes:', err);
+      setError('Failed to sync with Cloudinary storage.');
+    } finally {
+      setSyncingCloud(false);
+    }
+  };
 
   // Fetch already uploaded resumes and available jobs on initial mount
   useEffect(() => {
@@ -428,14 +445,27 @@ export default function ResumeUpload() {
               </div>
             </div>
 
-            <button
-              onClick={() => navigate('/matching')}
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-              Match All with Jobs Now
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSyncCloudinary}
+                disabled={syncingCloud}
+                className="px-4 py-2.5 bg-white border border-slate-200 hover:border-blue-400 text-slate-700 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                title="Sync and verify all resumes stored on Cloudinary CDN"
+              >
+                <Cloud className={`w-4 h-4 ${syncingCloud ? 'animate-bounce text-blue-600' : 'text-blue-500'}`} />
+                {syncingCloud ? 'Syncing...' : 'Sync Cloudinary'}
+              </button>
+
+              <button
+                onClick={() => navigate('/matching')}
+                className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                Match All with Jobs Now
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Quick Match Callout for Recruiter */}
@@ -509,10 +539,10 @@ export default function ResumeUpload() {
                         href={cand.file_url.startsWith('http') ? cand.file_url : `http://localhost:8000${cand.file_url}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 text-xs font-bold transition-colors shadow-2xs"
-                        title="View resume on Cloudinary"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:text-blue-800 hover:bg-blue-100 text-xs font-bold transition-colors shadow-2xs"
+                        title="View candidate CV directly on Cloudinary CDN"
                       >
-                        <Eye className="w-3 h-3 text-slate-500" />
+                        <Cloud className="w-3.5 h-3.5 text-blue-600" />
                         View CV
                       </a>
                     )}

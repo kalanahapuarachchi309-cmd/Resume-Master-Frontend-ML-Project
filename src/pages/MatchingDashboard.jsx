@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { jobsAPI, matchingAPI } from '../services/api';
+import { jobsAPI, matchingAPI, resumesAPI } from '../services/api';
 import { 
   Sparkles, 
   Trophy, 
@@ -26,7 +26,8 @@ import {
   ShieldAlert,
   Eye,
   Tag,
-  Mail
+  Mail,
+  Cloud
 } from 'lucide-react';
 
 export default function MatchingDashboard() {
@@ -40,6 +41,7 @@ export default function MatchingDashboard() {
   const [rankings, setRankings] = useState([]);
   const [evaluating, setEvaluating] = useState(false);
   const [loadingRankings, setLoadingRankings] = useState(false);
+  const [syncingCloud, setSyncingCloud] = useState(false);
   const [error, setError] = useState('');
   const [expandedRow, setExpandedRow] = useState(null);
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'top' | 'moderate' | 'unmatched'
@@ -66,6 +68,28 @@ export default function MatchingDashboard() {
       }
       return p;
     });
+  };
+
+  const handleSyncCloudinary = async () => {
+    setSyncingCloud(true);
+    setError('');
+    try {
+      await resumesAPI.syncCloudinary();
+      if (selectedJobId) {
+        const res = await matchingAPI.getRankings(selectedJobId);
+        const candidateList = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.rankings)
+          ? res.data.rankings
+          : [];
+        setRankings(candidateList);
+      }
+    } catch (err) {
+      console.error('Failed to sync with Cloudinary:', err);
+      setError('Failed to sync resumes with Cloudinary storage.');
+    } finally {
+      setSyncingCloud(false);
+    }
   };
 
   // Fetch all jobs on initial load
@@ -284,9 +308,15 @@ export default function MatchingDashboard() {
       {/* Top Banner */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm">
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            Random Forest ML Matcher &amp; Candidate Leaderboard
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              Random Forest ML Matcher &amp; Candidate Leaderboard
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              Cloudinary CDN Active
+            </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Candidate Matching Leaderboard
@@ -321,6 +351,16 @@ export default function MatchingDashboard() {
               Post a Job First
             </Link>
           )}
+
+          <button
+            onClick={handleSyncCloudinary}
+            disabled={syncingCloud}
+            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 text-slate-700 text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0"
+            title="Sync, verify, and retrieve all candidate CVs directly from Cloudinary CDN"
+          >
+            <Cloud className={`w-4 h-4 ${syncingCloud ? 'animate-bounce text-blue-600' : 'text-blue-500'}`} />
+            {syncingCloud ? 'Syncing Cloudinary...' : 'Sync Cloudinary'}
+          </button>
 
           <button
             onClick={handleEvaluate}
@@ -795,11 +835,12 @@ export default function MatchingDashboard() {
                         }
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors shadow-2xs group/btn"
-                        title="View candidate CV document on Cloudinary"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 rounded-xl transition-colors shadow-2xs group/btn"
+                        title="View candidate CV directly on Cloudinary CDN"
                       >
-                        <Eye className="w-3.5 h-3.5 text-slate-500 group-hover/btn:text-blue-600" />
-                        View CV
+                        <Cloud className="w-3.5 h-3.5 text-blue-600 group-hover/btn:scale-110 transition-transform" />
+                        <span>View CV</span>
+                        <span className="text-[10px] text-blue-500 font-mono hidden sm:inline">(Cloudinary)</span>
                       </a>
 
                       <button

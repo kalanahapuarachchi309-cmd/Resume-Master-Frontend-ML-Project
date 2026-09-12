@@ -70,6 +70,7 @@ export const resumesAPI = {
   }),
   getAll: (skip = 0, limit = 300) => api.get(`/resumes?skip=${skip}&limit=${limit}`),
   getById: (id) => api.get(`/resumes/${id}`),
+  syncCloudinary: () => api.post('/resumes/sync-cloudinary'),
 };
 
 // Matching & ML Evaluation endpoints
