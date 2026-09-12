@@ -62,6 +62,12 @@ export const resumesAPI = {
   upload: (formData) => api.post('/resumes/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  uploadBulk: (formData) => api.post('/resumes/upload-bulk', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  uploadBatch: (formData) => api.post('/resumes/upload-batch', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   getAll: (skip = 0, limit = 50) => api.get(`/resumes?skip=${skip}&limit=${limit}`),
   getById: (id) => api.get(`/resumes/${id}`),
 };
