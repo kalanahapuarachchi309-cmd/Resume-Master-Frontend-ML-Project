@@ -10,12 +10,16 @@ import {
   Tag, 
   Briefcase, 
   GraduationCap, 
-  User, 
   X, 
   Layers, 
   RefreshCw, 
-  ArrowRight 
+  ArrowRight,
+  Eye,
+  Cloud,
+  Check
 } from 'lucide-react';
+
+const CHUNK_SIZE = 15; // Process in sequential batches of 15 to handle up to 300 CVs smoothly without network timeouts
 
 export default function ResumeUpload() {
   const navigate = useNavigate();
@@ -24,6 +28,15 @@ export default function ResumeUpload() {
   const [error, setError] = useState('');
   const [parsedResults, setParsedResults] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+
+  // Chunked queue progress state for 300+ CV uploads
+  const [uploadProgress, setUploadProgress] = useState({
+    current: 0,
+    total: 0,
+    percent: 0,
+    batch: 0,
+    totalBatches: 0
+  });
 
   const isValidFile = (file) => {
     return file.name.endsWith('.pdf') || file.name.endsWith('.docx') || file.name.endsWith('.doc');
@@ -39,7 +52,12 @@ export default function ResumeUpload() {
       setFiles((prev) => {
         const existingNames = new Set(prev.map((f) => f.name));
         const newOnes = selected.filter((f) => !existingNames.has(f.name));
-        return [...prev, ...newOnes];
+        const combined = [...prev, ...newOnes];
+        if (combined.length > 300) {
+          setError('Maximum limit of 300 CVs reached for a single batch queue.');
+          return combined.slice(0, 300);
+        }
+        return combined;
       });
       setError('');
     }
@@ -68,7 +86,12 @@ export default function ResumeUpload() {
       setFiles((prev) => {
         const existingNames = new Set(prev.map((f) => f.name));
         const newOnes = dropped.filter((f) => !existingNames.has(f.name));
-        return [...prev, ...newOnes];
+        const combined = [...prev, ...newOnes];
+        if (combined.length > 300) {
+          setError('Maximum limit of 300 CVs reached for a single batch queue.');
+          return combined.slice(0, 300);
+        }
+        return combined;
       });
       setError('');
     }
@@ -80,8 +103,10 @@ export default function ResumeUpload() {
 
   const clearAllFiles = () => {
     setFiles([]);
+    setUploadProgress({ current: 0, total: 0, percent: 0, batch: 0, totalBatches: 0 });
   };
 
+  // High-volume batch upload with sequential chunking (handles up to 300 CVs safely)
   const handleUpload = async (e) => {
     e.preventDefault();
     if (files.length === 0) {
@@ -92,23 +117,71 @@ export default function ResumeUpload() {
     setUploading(true);
     setError('');
 
+    const totalFiles = files.length;
+    const totalBatches = Math.ceil(totalFiles / CHUNK_SIZE);
+    let processedCount = 0;
+    const allResults = [];
+
+    setUploadProgress({
+      current: 0,
+      total: totalFiles,
+      percent: 0,
+      batch: 1,
+      totalBatches: totalBatches
+    });
+
     try {
-      if (files.length === 1) {
+      if (totalFiles === 1) {
         // Single resume upload
         const formData = new FormData();
         formData.append('file', files[0]);
         const res = await resumesAPI.upload(formData);
-        setParsedResults([res.data]);
-      } else {
-        // Bulk / Batch multi-resume upload
-        const formData = new FormData();
-        files.forEach((f) => {
-          formData.append('files', f);
+        allResults.push(res.data);
+        setUploadProgress({
+          current: 1,
+          total: 1,
+          percent: 100,
+          batch: 1,
+          totalBatches: 1
         });
-        const res = await resumesAPI.uploadBulk(formData);
-        setParsedResults(Array.isArray(res.data) ? res.data : [res.data]);
+      } else {
+        // Chunked queue: process in sequential batches of 15 to avoid browser/network memory overloads
+        for (let i = 0; i < totalFiles; i += CHUNK_SIZE) {
+          const chunk = files.slice(i, i + CHUNK_SIZE);
+          const currentBatchNum = Math.floor(i / CHUNK_SIZE) + 1;
+
+          setUploadProgress((prev) => ({
+            ...prev,
+            batch: currentBatchNum,
+            percent: Math.round((processedCount / totalFiles) * 100)
+          }));
+
+          const formData = new FormData();
+          chunk.forEach((f) => {
+            formData.append('files', f);
+          });
+
+          try {
+            const res = await resumesAPI.uploadBulk(formData);
+            const batchResults = Array.isArray(res.data) ? res.data : [res.data];
+            allResults.push(...batchResults);
+          } catch (batchErr) {
+            console.error(`Batch ${currentBatchNum} encounter an error:`, batchErr);
+            // Continue with subsequent batches so one failing file does not halt the entire 300 CV run
+          }
+
+          processedCount += chunk.length;
+          setUploadProgress({
+            current: Math.min(processedCount, totalFiles),
+            total: totalFiles,
+            percent: Math.round((Math.min(processedCount, totalFiles) / totalFiles) * 100),
+            batch: currentBatchNum,
+            totalBatches: totalBatches
+          });
+        }
       }
-      // Clear staged files after upload
+
+      setParsedResults((prev) => [...allResults, ...prev]);
       setFiles([]);
     } catch (err) {
       console.error(err);
@@ -131,14 +204,14 @@ export default function ResumeUpload() {
       {/* Page Header */}
       <div>
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold mb-2">
-          <Layers className="w-3.5 h-3.5" />
-          Bulk & Single CV Ingestion Engine
+          <Cloud className="w-3.5 h-3.5 text-blue-600" />
+          Cloudinary Cloud Storage &amp; High-Volume Batch Ingestion (Up to 300 CVs)
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-          Upload & Parse Resumes (Bulk Supported)
+          Upload Candidate Resumes
         </h1>
         <p className="text-sm text-slate-600 mt-1">
-          Select or drag multiple candidate CVs (PDF/DOCX) to simultaneously extract skills, experience years, and degrees with NLP.
+          Upload up to <strong>300 candidate CVs</strong> at once. Resumes are backed up directly to <strong>Cloudinary CDN</strong> and parsed with NLP for automated AI matching.
         </p>
       </div>
 
@@ -171,7 +244,8 @@ export default function ResumeUpload() {
               multiple
               accept=".pdf,.docx,.doc"
               onChange={handleFileChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={uploading}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
             />
 
             <div className="flex flex-col items-center justify-center space-y-3 pointer-events-none">
@@ -185,11 +259,11 @@ export default function ResumeUpload() {
 
               <div>
                 <p className="text-base font-semibold text-slate-800">
-                  Drag and drop <span className="font-bold text-blue-600">multiple CVs</span> here, or{' '}
+                  Drag and drop <span className="font-bold text-blue-600">up to 300 CVs</span> here, or{' '}
                   <span className="text-blue-600 font-bold hover:underline">browse</span>
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  Supports bulk selection of PDF and DOCX documents (up to 10MB per file)
+                  Supports bulk selection of PDF and DOCX documents (synchronized directly to Cloudinary)
                 </p>
               </div>
             </div>
@@ -201,14 +275,21 @@ export default function ResumeUpload() {
               <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                 <span>
                   Ready to upload: <strong>{files.length} {files.length === 1 ? 'file' : 'files'}</strong> ({totalMB} MB)
+                  {files.length > 15 && (
+                    <span className="text-blue-600 ml-2">
+                      (Will be queued into {Math.ceil(files.length / CHUNK_SIZE)} sequential batches)
+                    </span>
+                  )}
                 </span>
-                <button
-                  type="button"
-                  onClick={clearAllFiles}
-                  className="text-red-600 hover:underline"
-                >
-                  Clear all
-                </button>
+                {!uploading && (
+                  <button
+                    type="button"
+                    onClick={clearAllFiles}
+                    className="text-red-600 hover:underline"
+                  >
+                    Clear all
+                  </button>
+                )}
               </div>
 
               <div className="max-h-48 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-wrap gap-2">
@@ -224,15 +305,40 @@ export default function ResumeUpload() {
                     <span className="text-[10px] text-slate-400">
                       ({(file.size / 1024).toFixed(0)} KB)
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(file.name)}
-                      className="text-slate-400 hover:text-red-600 focus:outline-none ml-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {!uploading && (
+                      <button
+                        type="button"
+                        onClick={() => removeFile(file.name)}
+                        className="text-slate-400 hover:text-red-600 focus:outline-none ml-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Live Progress Bar for High-Volume Uploads */}
+          {uploading && (
+            <div className="mt-6 p-5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-bold text-blue-900">
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                  Uploading to Cloudinary &amp; Parsing: {uploadProgress.current} / {uploadProgress.total} CVs
+                </span>
+                <span>{uploadProgress.percent}%</span>
+              </div>
+              <div className="w-full bg-blue-200/60 rounded-full h-3 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress.percent}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-blue-700">
+                <span>Batch {uploadProgress.batch} of {uploadProgress.totalBatches} ({CHUNK_SIZE} CVs per batch)</span>
+                <span>Cloudinary CDN sync active</span>
               </div>
             </div>
           )}
@@ -251,14 +357,14 @@ export default function ResumeUpload() {
               {uploading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  Parsing {files.length} {files.length === 1 ? 'Resume' : 'Resumes'} with NLP...
+                  Processing {uploadProgress.current} / {uploadProgress.total} ({uploadProgress.percent}%)...
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 text-yellow-300" />
                   {files.length > 1
-                    ? `Upload & Parse ${files.length} Resumes (Bulk)`
-                    : 'Upload & Parse Resume'}
+                    ? `Upload & Parse ${files.length} Resumes to Cloudinary`
+                    : 'Upload & Parse Resume to Cloudinary'}
                 </>
               )}
             </button>
@@ -274,10 +380,10 @@ export default function ResumeUpload() {
               <CheckCircle2 className="w-6 h-6 shrink-0" />
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
-                  {parsedResults.length} {parsedResults.length === 1 ? 'Resume' : 'Resumes'} Successfully Parsed & Indexed!
+                  {parsedResults.length} {parsedResults.length === 1 ? 'Resume' : 'Resumes'} Ingested &amp; Backed Up to Cloudinary!
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Candidates are now available in the database for AI matching
+                  Indexed candidates are available in the database for AI matching
                 </p>
               </div>
             </div>
@@ -314,9 +420,23 @@ export default function ResumeUpload() {
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-semibold shrink-0">
-                    ID #{cand.id}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {cand.file_url && (
+                      <a
+                        href={cand.file_url.startsWith('http') ? cand.file_url : `http://localhost:8000${cand.file_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 text-xs font-bold transition-colors shadow-2xs"
+                        title="View resume on Cloudinary"
+                      >
+                        <Eye className="w-3 h-3 text-slate-500" />
+                        View CV
+                      </a>
+                    )}
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-semibold shrink-0">
+                      ID #{cand.id}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Candidate Metadata Badges */}
