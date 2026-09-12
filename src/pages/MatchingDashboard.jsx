@@ -32,6 +32,7 @@ import {
 export default function MatchingDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryJobId = searchParams.get('jobId') || '';
+  const queryScope = searchParams.get('scope') || 'all';
 
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(queryJobId);
@@ -43,6 +44,29 @@ export default function MatchingDashboard() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'top' | 'moderate' | 'unmatched'
   const [searchFilter, setSearchFilter] = useState('');
+  const [topCount, setTopCount] = useState(10); // 10 | 20 | 30 | 50 | 'all'
+  const [candidateScope, setCandidateScope] = useState(queryScope === 'latest' ? 'latest' : 'all');
+  const [latestUploadedIds, setLatestUploadedIds] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('latest_uploaded_resume_ids');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleScopeChange = (scope) => {
+    setCandidateScope(scope);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (scope === 'latest') {
+        p.set('scope', 'latest');
+      } else {
+        p.delete('scope');
+      }
+      return p;
+    });
+  };
 
   // Fetch all jobs on initial load
   useEffect(() => {
@@ -145,18 +169,23 @@ export default function MatchingDashboard() {
     }
   };
 
-  // Metric Categories
-  const topMatches = rankings.filter((c) => {
+  // 1. Candidate Scope filter (All Resumes vs Latest Uploaded Batch)
+  const scopedCandidates = (candidateScope === 'latest' && latestUploadedIds.length > 0)
+    ? rankings.filter((c) => latestUploadedIds.includes(c.resume_id))
+    : rankings;
+
+  // Metric Categories based on active scoped candidates
+  const topMatches = scopedCandidates.filter((c) => {
     const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
     return s >= 70;
   });
 
-  const moderateMatches = rankings.filter((c) => {
+  const moderateMatches = scopedCandidates.filter((c) => {
     const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
     return s >= 40 && s < 70;
   });
 
-  const unmatchedCandidates = rankings.filter((c) => {
+  const unmatchedCandidates = scopedCandidates.filter((c) => {
     const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
     return s < 40;
   });
@@ -173,7 +202,7 @@ export default function MatchingDashboard() {
     .slice(0, 6);
 
   // Filtered candidate list based on active tab and search query
-  const displayedCandidates = rankings.filter((cand) => {
+  const filteredCandidates = scopedCandidates.filter((cand) => {
     const score = cand.match_score !== undefined ? cand.match_score : (cand.overall_score || 0);
 
     if (filterTab === 'top' && score < 70) return false;
@@ -192,6 +221,11 @@ export default function MatchingDashboard() {
 
     return true;
   });
+
+  // Apply customizable Top Count Filter (Top 10 / 20 / 30 / 50 / All)
+  const displayedCandidates = topCount === 'all'
+    ? filteredCandidates
+    : filteredCandidates.slice(0, Number(topCount));
 
   const getRankBadge = (rank, isUnmatched) => {
     if (isUnmatched) {
@@ -507,8 +541,13 @@ export default function MatchingDashboard() {
               {filterTab === 'unmatched' && 'Unmatched / Low Fit Candidates'}
               {filterTab === 'all' && 'All Ranked Candidates'}
               <span className="text-sm font-normal text-slate-500">
-                ({displayedCandidates.length} of {rankings.length})
+                ({displayedCandidates.length} of {scopedCandidates.length} evaluated)
               </span>
+              {topCount !== 'all' && Number(topCount) < filteredCandidates.length && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold">
+                  Top {topCount} Filter Active
+                </span>
+              )}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Ordered by Random Forest match probability &amp; feature vector predictive scoring
@@ -537,6 +576,69 @@ export default function MatchingDashboard() {
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                 Skill Gap / Missing
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Customizable Top Count & Candidate Pool Controls */}
+        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Candidate Scope Selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Pool:
+            </span>
+            <div className="inline-flex rounded-xl bg-slate-200/70 p-1">
+              <button
+                type="button"
+                onClick={() => handleScopeChange('all')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  candidateScope === 'all'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All Resumes ({rankings.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScopeChange('latest')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                  candidateScope === 'latest'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3 h-3 text-yellow-300" />
+                Latest Uploaded Batch
+                {latestUploadedIds.length > 0 ? ` (${latestUploadedIds.length})` : ''}
+              </button>
+            </div>
+          </div>
+
+          {/* Customizable Top Candidates Count Filter (10, 20, 30, 50, All) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Top Candidates:
+            </span>
+            <div className="inline-flex rounded-xl bg-slate-200/70 p-1">
+              {[10, 20, 30, 50, 'all'].map((count) => {
+                const isActive = topCount === count;
+                const label = count === 'all' ? 'All' : `Top ${count}`;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setTopCount(count)}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      isActive
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

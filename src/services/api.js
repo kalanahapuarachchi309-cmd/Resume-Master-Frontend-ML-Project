@@ -68,15 +68,20 @@ export const resumesAPI = {
   uploadBatch: (formData) => api.post('/resumes/upload-batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  getAll: (skip = 0, limit = 50) => api.get(`/resumes?skip=${skip}&limit=${limit}`),
+  getAll: (skip = 0, limit = 300) => api.get(`/resumes?skip=${skip}&limit=${limit}`),
   getById: (id) => api.get(`/resumes/${id}`),
 };
 
 // Matching & ML Evaluation endpoints
 export const matchingAPI = {
-  evaluate: (jobId, resumeIds = null) =>
-    api.post(`/matching/job/${jobId}/evaluate`, { job_id: Number(jobId), resume_ids: resumeIds }),
-  getRankings: (jobId) => api.get(`/matching/job/${jobId}/rankings`),
+  evaluate: (jobId, resumeIds = null, topN = null) => {
+    const query = topN ? `?top_n=${topN}` : '';
+    return api.post(`/matching/job/${jobId}/evaluate${query}`, { job_id: Number(jobId), resume_ids: resumeIds });
+  },
+  getRankings: (jobId, topN = null) => {
+    const query = topN ? `?top_n=${topN}` : '';
+    return api.get(`/matching/job/${jobId}/rankings${query}`);
+  },
 };
 
 export default api;

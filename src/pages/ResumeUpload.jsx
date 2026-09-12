@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { resumesAPI } from '../services/api';
+import { resumesAPI, jobsAPI } from '../services/api';
 import { 
   UploadCloud, 
   FileText, 
@@ -30,22 +30,37 @@ export default function ResumeUpload() {
   const [parsedResults, setParsedResults] = useState([]);
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [availableJobs, setAvailableJobs] = useState([]);
+  const [targetJobId, setTargetJobId] = useState('');
+  const [latestUploadedIds, setLatestUploadedIds] = useState([]);
 
-  // Fetch already uploaded resumes from backend on initial mount
+  // Fetch already uploaded resumes and available jobs on initial mount
   useEffect(() => {
-    const fetchExistingResumes = async () => {
+    const fetchInitialData = async () => {
       setLoadingExisting(true);
       try {
-        const res = await resumesAPI.getAll(0, 100);
-        const list = Array.isArray(res.data) ? res.data : [];
-        setParsedResults(list);
+        const [resumesRes, jobsRes] = await Promise.allSettled([
+          resumesAPI.getAll(0, 300),
+          jobsAPI.getAll(),
+        ]);
+        if (resumesRes.status === 'fulfilled') {
+          const list = Array.isArray(resumesRes.value?.data) ? resumesRes.value.data : [];
+          setParsedResults(list);
+        }
+        if (jobsRes.status === 'fulfilled') {
+          const jobList = Array.isArray(jobsRes.value?.data) ? jobsRes.value.data : [];
+          setAvailableJobs(jobList);
+          if (jobList.length > 0) {
+            setTargetJobId(jobList[0].id.toString());
+          }
+        }
       } catch (err) {
-        console.error('Failed to load existing resumes:', err);
+        console.error('Failed to load initial data:', err);
       } finally {
         setLoadingExisting(false);
       }
     };
-    fetchExistingResumes();
+    fetchInitialData();
   }, []);
 
   // Chunked queue progress state for 300+ CV uploads
@@ -198,6 +213,12 @@ export default function ResumeUpload() {
             totalBatches: totalBatches
           });
         }
+      }
+
+      const uploadedIds = allResults.map((r) => r.id).filter(Boolean);
+      if (uploadedIds.length > 0) {
+        sessionStorage.setItem('latest_uploaded_resume_ids', JSON.stringify(uploadedIds));
+        setLatestUploadedIds(uploadedIds);
       }
 
       setParsedResults((prev) => [...allResults, ...prev]);
@@ -409,13 +430,56 @@ export default function ResumeUpload() {
 
             <button
               onClick={() => navigate('/matching')}
-              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0"
             >
               <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
               Match All with Jobs Now
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Quick Match Callout for Recruiter */}
+          {availableJobs.length > 0 && (
+            <div className="p-5 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-900 uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  Instant ML Matching for Recruiter
+                </div>
+                <p className="text-xs text-slate-700 max-w-xl">
+                  {latestUploadedIds.length > 0
+                    ? `Latest batch of ${latestUploadedIds.length} CVs uploaded! Select a job post to evaluate this batch immediately against job requirements.`
+                    : 'Select an active job vacancy below to evaluate candidates using our trained Random Forest model and view the ranked leaderboard.'}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+                <select
+                  value={targetJobId}
+                  onChange={(e) => setTargetJobId(e.target.value)}
+                  className="px-3.5 py-2 bg-white border border-blue-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                >
+                  {availableJobs.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.title}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => {
+                    const scopeParam = latestUploadedIds.length > 0 ? '&scope=latest' : '';
+                    navigate(`/matching?jobId=${targetJobId || availableJobs[0]?.id}${scopeParam}`);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  Rank Top Fit
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Cards Grid for Parsed Candidates */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
