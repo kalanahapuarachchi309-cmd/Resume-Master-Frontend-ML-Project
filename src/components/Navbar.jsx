@@ -85,11 +85,11 @@ export default function Navbar() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
                   <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
-                    {user?.full_name ? user.full_name[0].toUpperCase() : 'U'}
+                    {(user?.name || user?.full_name || 'U')[0].toUpperCase()}
                   </div>
                   <div className="hidden sm:block text-left">
                     <p className="text-xs font-semibold text-slate-800 leading-tight">
-                      {user?.full_name}
+                      {user?.name || user?.full_name || 'User'}
                     </p>
                     <span
                       className={`inline-block text-[10px] font-semibold px-1.5 py-0.2 rounded ${

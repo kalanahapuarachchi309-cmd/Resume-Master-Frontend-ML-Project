@@ -21,6 +21,7 @@ export default function Register() {
 
     try {
       await register({
+        name: fullName,
         full_name: fullName,
         email,
         password,
@@ -32,9 +33,12 @@ export default function Register() {
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
-      setError(
-        err.response?.data?.detail || 'Failed to create account. Please check your details.'
-      );
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg || `${d.loc?.join('.')}: ${d.msg}`).join(', '));
+      } else {
+        setError(detail || 'Failed to create account. Please check your details.');
+      }
     } finally {
       setLoading(false);
     }

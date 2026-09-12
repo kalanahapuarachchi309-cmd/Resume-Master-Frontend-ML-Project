@@ -32,12 +32,22 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const response = await authAPI.login({ email, password });
-    const { access_token, user: userData } = response.data;
+    const { access_token, user: userData, role } = response.data;
     localStorage.setItem('token', access_token);
-    localStorage.setItem('user', JSON.stringify(userData));
     setToken(access_token);
-    setUser(userData);
-    return userData;
+
+    let profile = userData;
+    if (!profile) {
+      try {
+        const meRes = await authAPI.getMe();
+        profile = meRes.data;
+      } catch {
+        profile = { email, role };
+      }
+    }
+    localStorage.setItem('user', JSON.stringify(profile));
+    setUser(profile);
+    return profile;
   };
 
   const register = async (userData) => {
