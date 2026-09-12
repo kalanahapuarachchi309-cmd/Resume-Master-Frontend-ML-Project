@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resumesAPI } from '../services/api';
 import { 
@@ -16,7 +16,8 @@ import {
   ArrowRight,
   Eye,
   Cloud,
-  Check
+  Check,
+  Mail
 } from 'lucide-react';
 
 const CHUNK_SIZE = 15; // Process in sequential batches of 15 to handle up to 300 CVs smoothly without network timeouts
@@ -27,7 +28,25 @@ export default function ResumeUpload() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [parsedResults, setParsedResults] = useState([]);
+  const [loadingExisting, setLoadingExisting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+
+  // Fetch already uploaded resumes from backend on initial mount
+  useEffect(() => {
+    const fetchExistingResumes = async () => {
+      setLoadingExisting(true);
+      try {
+        const res = await resumesAPI.getAll(0, 100);
+        const list = Array.isArray(res.data) ? res.data : [];
+        setParsedResults(list);
+      } catch (err) {
+        console.error('Failed to load existing resumes:', err);
+      } finally {
+        setLoadingExisting(false);
+      }
+    };
+    fetchExistingResumes();
+  }, []);
 
   // Chunked queue progress state for 300+ CV uploads
   const [uploadProgress, setUploadProgress] = useState({
@@ -414,8 +433,8 @@ export default function ResumeUpload() {
                       <h3 className="text-sm font-bold text-slate-800">
                         {cand.candidate_name || cand.filename}
                       </h3>
-                      <p className="text-[11px] text-slate-400 font-mono truncate max-w-[220px]">
-                        {cand.filename}
+                      <p className="text-[11px] text-slate-500 font-mono truncate max-w-[220px]">
+                        {cand.candidate_email || cand.filename}
                       </p>
                     </div>
                   </div>

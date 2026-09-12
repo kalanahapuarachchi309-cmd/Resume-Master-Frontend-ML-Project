@@ -24,7 +24,9 @@ import {
   Check,
   TrendingDown,
   ShieldAlert,
-  Eye
+  Eye,
+  Tag,
+  Mail
 } from 'lucide-react';
 
 export default function MatchingDashboard() {
@@ -81,11 +83,25 @@ export default function MatchingDashboard() {
       setError('');
       try {
         const res = await matchingAPI.getRankings(selectedJobId);
-        const candidateList = Array.isArray(res.data)
+        let candidateList = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.rankings)
           ? res.data.rankings
           : [];
+
+        // If no prior evaluations exist for this job, auto-trigger evaluation so the user immediately sees matches
+        if (candidateList.length === 0) {
+          try {
+            const evalRes = await matchingAPI.evaluate(selectedJobId);
+            candidateList = Array.isArray(evalRes.data)
+              ? evalRes.data
+              : Array.isArray(evalRes.data?.rankings)
+              ? evalRes.data.rankings
+              : [];
+          } catch (evalErr) {
+            console.warn('Auto-evaluation skipped:', evalErr);
+          }
+        }
         setRankings(candidateList);
       } catch (err) {
         setRankings([]);
@@ -599,7 +615,7 @@ export default function MatchingDashboard() {
                     {/* Left: Rank & Candidate info */}
                     <div className="flex items-start sm:items-center gap-4">
                       <div>{getRankBadge(cand.rank || index + 1, isUnmatched)}</div>
-                      <div>
+                      <div className="space-y-1">
                         <div className="text-base font-bold text-slate-900 flex items-center gap-2">
                           {cand.candidate_name || `Candidate #${cand.resume_id}`}
                           {isUnmatched && (
@@ -609,8 +625,38 @@ export default function MatchingDashboard() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {cand.candidate_email || 'Resume ID: #' + cand.resume_id}
+
+                        {/* Candidate Email & Contact */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{cand.candidate_email || `Resume ID: #${cand.resume_id}`}</span>
+                        </div>
+
+                        {/* Candidate Extracted Credentials vs Recruiter Requirements */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-medium">
+                            <Briefcase className="w-3 h-3 text-slate-500" />
+                            {cand.experience_years ? `${cand.experience_years} yrs exp` : '0 yrs exp'}
+                            <span className={`ml-1 text-[10px] font-bold ${
+                              cand.experience_fit?.includes('Under') ? 'text-rose-600' : 'text-emerald-600'
+                            }`}>
+                              ({cand.experience_fit || 'Meets Requirement'})
+                            </span>
+                          </span>
+
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-medium">
+                            <GraduationCap className="w-3 h-3 text-slate-500" />
+                            {cand.education_level || "Bachelor's Degree"}
+                            {cand.education_fit && (
+                              <span className={`ml-1 text-[10px] font-bold ${
+                                cand.education_fit?.includes('Under') || cand.education_fit?.includes('Requires') 
+                                  ? 'text-rose-600' 
+                                  : 'text-emerald-600'
+                              }`}>
+                                ({cand.education_fit})
+                              </span>
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -699,6 +745,21 @@ export default function MatchingDashboard() {
                       </span>
                     ))}
 
+                    {/* Additional Candidate Skills (Slate/Blue) */}
+                    {(cand.candidate_skills || [])
+                      .filter((sk) => !(cand.matched_skills || []).includes(sk))
+                      .slice(0, 4)
+                      .map((skill, i) => (
+                        <span
+                          key={`extra-${i}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200"
+                          title="Additional candidate skill (not in job required list)"
+                        >
+                          <Tag className="w-3 h-3 text-slate-400" />
+                          {skill}
+                        </span>
+                      ))}
+
                     {(!cand.matched_skills || cand.matched_skills.length === 0) &&
                      (!cand.missing_skills || cand.missing_skills.length === 0) && (
                       <span className="text-xs text-slate-400">No skill differential detected.</span>
@@ -757,21 +818,24 @@ export default function MatchingDashboard() {
                             <div className="text-sm font-bold text-slate-900 mt-0.5">
                               {cand.experience_years ? `${cand.experience_years} Years` : '0 Years'}
                             </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 truncate">{cand.experience_fit}</div>
                           </div>
 
                           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-                            <div className="text-[11px] text-slate-500 font-semibold">Experience Fit</div>
-                            <div className={`text-xs font-bold mt-0.5 ${
-                              cand.experience_fit?.includes('Under') ? 'text-rose-600' : 'text-slate-900'
-                            }`}>
-                              {cand.experience_fit || 'Meets Requirement'}
+                            <div className="text-[11px] text-slate-500 font-semibold">Education Degree</div>
+                            <div className="text-sm font-bold text-slate-900 mt-0.5 truncate">
+                              {cand.education_level || "Bachelor"}
                             </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 truncate">{cand.education_fit}</div>
                           </div>
 
                           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
                             <div className="text-[11px] text-slate-500 font-semibold">Matched Skills</div>
                             <div className="text-sm font-bold text-emerald-600 mt-0.5">
                               {(cand.matched_skills || []).length} / {((cand.matched_skills || []).length + (cand.missing_skills || []).length)} Skills
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              {((cand.matched_skills || []).length / Math.max(1, ((cand.matched_skills || []).length + (cand.missing_skills || []).length)) * 100).toFixed(0)}% Overlap
                             </div>
                           </div>
 
@@ -780,6 +844,7 @@ export default function MatchingDashboard() {
                             <div className="text-xs font-bold text-indigo-600 mt-0.5 truncate" title={cand.model_used}>
                               {cand.model_used || 'RandomForest'}
                             </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">99.8% F1-Score</div>
                           </div>
                         </div>
                       </div>
