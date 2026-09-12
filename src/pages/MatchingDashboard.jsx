@@ -13,10 +13,17 @@ import {
   ChevronUp, 
   Info, 
   AlertCircle, 
+  AlertTriangle,
   RefreshCw, 
   PlusCircle, 
   GraduationCap, 
-  Clock 
+  Clock,
+  Filter,
+  Search,
+  UserX,
+  Check,
+  TrendingDown,
+  ShieldAlert
 } from 'lucide-react';
 
 export default function MatchingDashboard() {
@@ -31,6 +38,8 @@ export default function MatchingDashboard() {
   const [loadingRankings, setLoadingRankings] = useState(false);
   const [error, setError] = useState('');
   const [expandedRow, setExpandedRow] = useState(null);
+  const [filterTab, setFilterTab] = useState('all'); // 'all' | 'top' | 'moderate' | 'unmatched'
+  const [searchFilter, setSearchFilter] = useState('');
 
   // Fetch all jobs on initial load
   useEffect(() => {
@@ -41,7 +50,6 @@ export default function MatchingDashboard() {
         setJobs(jobList);
 
         if (jobList.length > 0) {
-          // If queryJobId matches one of the jobs, use it; otherwise default to first job
           const targetId = queryJobId && jobList.some((j) => j.id.toString() === queryJobId)
             ? queryJobId
             : jobList[0].id.toString();
@@ -64,7 +72,6 @@ export default function MatchingDashboard() {
       return;
     }
 
-    // Update selectedJob instance from list
     const found = jobs.find((j) => j.id.toString() === selectedJobId.toString());
     if (found) setSelectedJob(found);
 
@@ -73,7 +80,6 @@ export default function MatchingDashboard() {
       setError('');
       try {
         const res = await matchingAPI.getRankings(selectedJobId);
-        // Handle both object response { rankings: [...] } and array response
         const candidateList = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.rankings)
@@ -81,7 +87,6 @@ export default function MatchingDashboard() {
           : [];
         setRankings(candidateList);
       } catch (err) {
-        // No evaluations calculated yet is normal before clicking evaluate
         setRankings([]);
       } finally {
         setLoadingRankings(false);
@@ -123,12 +128,68 @@ export default function MatchingDashboard() {
     }
   };
 
-  const getRankBadge = (rank) => {
+  // Metric Categories
+  const topMatches = rankings.filter((c) => {
+    const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
+    return s >= 70;
+  });
+
+  const moderateMatches = rankings.filter((c) => {
+    const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
+    return s >= 40 && s < 70;
+  });
+
+  const unmatchedCandidates = rankings.filter((c) => {
+    const s = c.match_score !== undefined ? c.match_score : (c.overall_score || 0);
+    return s < 40;
+  });
+
+  // Calculate top missing skills across unmatched candidates
+  const missingSkillCounts = {};
+  unmatchedCandidates.forEach((cand) => {
+    (cand.missing_skills || []).forEach((sk) => {
+      missingSkillCounts[sk] = (missingSkillCounts[sk] || 0) + 1;
+    });
+  });
+  const topMissingSkills = Object.entries(missingSkillCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  // Filtered candidate list based on active tab and search query
+  const displayedCandidates = rankings.filter((cand) => {
+    const score = cand.match_score !== undefined ? cand.match_score : (cand.overall_score || 0);
+
+    if (filterTab === 'top' && score < 70) return false;
+    if (filterTab === 'moderate' && (score < 40 || score >= 70)) return false;
+    if (filterTab === 'unmatched' && score >= 40) return false;
+
+    if (searchFilter.trim()) {
+      const term = searchFilter.toLowerCase();
+      const nameMatch = cand.candidate_name?.toLowerCase().includes(term);
+      const skillMatch = [
+        ...(cand.matched_skills || []),
+        ...(cand.missing_skills || []),
+      ].some((sk) => sk.toLowerCase().includes(term));
+      return nameMatch || skillMatch;
+    }
+
+    return true;
+  });
+
+  const getRankBadge = (rank, isUnmatched) => {
+    if (isUnmatched) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200">
+          <UserX className="w-3.5 h-3.5 text-rose-600" />
+          Unmatched
+        </div>
+      );
+    }
     if (rank === 1) {
       return (
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-extrabold text-xs shadow-sm">
           <Trophy className="w-3.5 h-3.5 text-slate-950" />
-          #1 Rank
+          #1 Top Match
         </div>
       );
     }
@@ -156,16 +217,14 @@ export default function MatchingDashboard() {
   };
 
   const getScoreColor = (score) => {
-    if (score >= 75) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-    if (score >= 50) return 'text-blue-600 bg-blue-50 border-blue-200';
-    if (score >= 35) return 'text-amber-600 bg-amber-50 border-amber-200';
-    return 'text-rose-600 bg-rose-50 border-rose-200';
+    if (score >= 70) return 'text-emerald-700 bg-emerald-50 border-emerald-300';
+    if (score >= 40) return 'text-blue-700 bg-blue-50 border-blue-300';
+    return 'text-rose-700 bg-rose-50 border-rose-300';
   };
 
   const getProgressBarColor = (score) => {
-    if (score >= 75) return 'bg-emerald-500';
-    if (score >= 50) return 'bg-blue-500';
-    if (score >= 35) return 'bg-amber-500';
+    if (score >= 70) return 'bg-emerald-500';
+    if (score >= 40) return 'bg-blue-500';
     return 'bg-rose-500';
   };
 
@@ -176,7 +235,7 @@ export default function MatchingDashboard() {
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5" />
-            Random Forest ML Matcher & Candidate Leaderboard
+            Random Forest ML Matcher &amp; Candidate Leaderboard
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Candidate Matching Leaderboard
@@ -266,7 +325,7 @@ export default function MatchingDashboard() {
               <span className="font-bold text-slate-100">{selectedJob.education_level || "Bachelor's Degree"}</span>
             </div>
             <div className="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-              <span className="text-slate-400">Skills: </span>
+              <span className="text-slate-400">Required Skills: </span>
               <span className="font-bold text-blue-400">
                 {(selectedJob.required_skills || []).join(', ') || 'General'}
               </span>
@@ -275,25 +334,197 @@ export default function MatchingDashboard() {
         </div>
       )}
 
+      {/* Match Category Filter Cards & Tabs */}
+      {rankings.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* All Candidates Card */}
+          <button
+            onClick={() => setFilterTab('all')}
+            className={`p-5 rounded-2xl border text-left transition-all ${
+              filterTab === 'all'
+                ? 'bg-blue-50/50 border-blue-500 shadow-md ring-2 ring-blue-500/20'
+                : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                All Evaluated
+              </span>
+              <BarChart3 className="w-4 h-4 text-slate-500" />
+            </div>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">
+              {rankings.length}
+            </div>
+            <div className="text-xs text-slate-500 mt-1">
+              Total candidates scored by ML
+            </div>
+          </button>
+
+          {/* Top Matches (>=70%) Card */}
+          <button
+            onClick={() => setFilterTab('top')}
+            className={`p-5 rounded-2xl border text-left transition-all ${
+              filterTab === 'top'
+                ? 'bg-emerald-50/70 border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:border-emerald-200 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                Top Matches (≥70%)
+              </span>
+              <Trophy className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-emerald-700 mt-2">
+              {topMatches.length}
+            </div>
+            <div className="text-xs text-emerald-600/80 mt-1">
+              Shortlisted &amp; highly recommended
+            </div>
+          </button>
+
+          {/* Moderate Matches (40-69%) Card */}
+          <button
+            onClick={() => setFilterTab('moderate')}
+            className={`p-5 rounded-2xl border text-left transition-all ${
+              filterTab === 'moderate'
+                ? 'bg-blue-50/70 border-blue-500 shadow-md ring-2 ring-blue-500/20'
+                : 'bg-white border-slate-200 hover:border-blue-200 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                Moderate Fit (40-69%)
+              </span>
+              <Info className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-blue-700 mt-2">
+              {moderateMatches.length}
+            </div>
+            <div className="text-xs text-blue-600/80 mt-1">
+              Potential matches with minor gaps
+            </div>
+          </button>
+
+          {/* Unmatched / Skill Gap (<40%) Card */}
+          <button
+            onClick={() => setFilterTab('unmatched')}
+            className={`p-5 rounded-2xl border text-left transition-all ${
+              filterTab === 'unmatched'
+                ? 'bg-rose-50/70 border-rose-500 shadow-md ring-2 ring-rose-500/20'
+                : 'bg-white border-slate-200 hover:border-rose-200 shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-700">
+                Unmatched (&lt;40%)
+              </span>
+              <UserX className="w-4 h-4 text-rose-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-rose-700 mt-2">
+              {unmatchedCandidates.length}
+            </div>
+            <div className="text-xs text-rose-600/80 mt-1">
+              Skill gaps or low compatibility
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Dedicated Unmatched / Skill Gap Analysis Banner */}
+      {filterTab === 'unmatched' && unmatchedCandidates.length > 0 && (
+        <div className="bg-rose-50/80 border-2 border-rose-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-rose-100 text-rose-700 rounded-2xl shrink-0">
+              <ShieldAlert className="w-6 h-6 text-rose-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-rose-950 flex items-center gap-2">
+                Unmatching &amp; Skill Gap Analysis
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-200 text-rose-800">
+                  {unmatchedCandidates.length} Candidates Flagged
+                </span>
+              </h3>
+              <p className="text-xs text-rose-800 mt-1 max-w-3xl">
+                These candidates scored under 40% match probability in the Random Forest evaluation. 
+                Common rejection factors include critical missing technical skills, insufficient years of experience, or low vector cosine similarity.
+              </p>
+            </div>
+          </div>
+
+          {/* Top Missing Skills Across Unmatched Cohort */}
+          {topMissingSkills.length > 0 && (
+            <div className="pt-3 border-t border-rose-200/70">
+              <div className="text-xs font-bold text-rose-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
+                Primary Skill Deficits Across Unmatched Candidates:
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {topMissingSkills.map(([skill, count]) => (
+                  <div
+                    key={skill}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-rose-300 rounded-xl text-xs font-bold text-rose-700 shadow-xs"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                    <span>{skill}</span>
+                    <span className="px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded-full text-[10px]">
+                      Missing in {count} CVs
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Leaderboard Table / Rankings Display */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Table Header & Search Filter */}
         <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-600" />
-              Ranked Candidates ({rankings.length})
+              {filterTab === 'top' && 'Top Shortlisted Candidates'}
+              {filterTab === 'moderate' && 'Moderate Match Candidates'}
+              {filterTab === 'unmatched' && 'Unmatched / Low Fit Candidates'}
+              {filterTab === 'all' && 'All Ranked Candidates'}
+              <span className="text-sm font-normal text-slate-500">
+                ({displayedCandidates.length} of {rankings.length})
+              </span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Ordered by Random Forest match probability & feature vector predictive scoring
+              Ordered by Random Forest match probability &amp; feature vector predictive scoring
             </p>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500" /> Matched Skills
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500 ml-2" /> Missing Skills
+          {/* Quick Search & Skill Legend */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Filter by name or skill..."
+                className="pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-48"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-slate-500 shrink-0">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                Matched
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                Skill Gap / Missing
+              </span>
+            </div>
           </div>
         </div>
 
+        {/* Content Body */}
         {loadingRankings ? (
           <div className="py-20 flex flex-col items-center justify-center text-slate-400">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
@@ -325,30 +556,60 @@ export default function MatchingDashboard() {
               </Link>
             </div>
           </div>
+        ) : displayedCandidates.length === 0 ? (
+          <div className="py-16 text-center px-4">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <Filter className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">No candidates match current filter</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+              No candidates found under the <strong>"{filterTab}"</strong> tab or search query "{searchFilter}".
+            </p>
+            <button
+              onClick={() => {
+                setFilterTab('all');
+                setSearchFilter('');
+              }}
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Reset Filters
+            </button>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {rankings.map((cand, index) => {
-              const isExpanded = expandedRow === index;
+            {displayedCandidates.map((cand, index) => {
+              const isExpanded = expandedRow === cand.resume_id;
               const rawScore = cand.match_score !== undefined ? cand.match_score : (cand.overall_score || 0);
               const score = typeof rawScore === 'number' ? rawScore : parseFloat(rawScore) || 0;
+              const isUnmatched = score < 40;
 
               return (
                 <div
-                  key={index}
+                  key={cand.resume_id || index}
                   className={`p-6 transition-colors ${
-                    index === 0 ? 'bg-amber-50/20' : 'hover:bg-slate-50/60'
+                    isUnmatched 
+                      ? 'bg-rose-50/20 hover:bg-rose-50/40' 
+                      : cand.rank === 1 
+                      ? 'bg-amber-50/20 hover:bg-amber-50/40' 
+                      : 'hover:bg-slate-50/60'
                   }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     {/* Left: Rank & Candidate info */}
                     <div className="flex items-start sm:items-center gap-4">
-                      <div>{getRankBadge(cand.rank || index + 1)}</div>
+                      <div>{getRankBadge(cand.rank || index + 1, isUnmatched)}</div>
                       <div>
-                        <div className="text-base font-bold text-slate-900">
+                        <div className="text-base font-bold text-slate-900 flex items-center gap-2">
                           {cand.candidate_name || `Candidate #${cand.resume_id}`}
+                          {isUnmatched && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              Low Match Alert
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {cand.candidate_email || 'Candidate Resume ID: #' + cand.resume_id}
+                          {cand.candidate_email || 'Resume ID: #' + cand.resume_id}
                         </div>
                       </div>
                     </div>
@@ -378,16 +639,20 @@ export default function MatchingDashboard() {
                     {/* Right: Toggle details */}
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => setExpandedRow(isExpanded ? null : index)}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors"
+                        onClick={() => setExpandedRow(isExpanded ? null : cand.resume_id)}
+                        className={`inline-flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-xl transition-colors ${
+                          isUnmatched
+                            ? 'text-rose-700 bg-rose-100 hover:bg-rose-200'
+                            : 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100'
+                        }`}
                       >
                         {isExpanded ? (
                           <>
-                            Hide Explainability <ChevronUp className="w-3.5 h-3.5" />
+                            Hide Breakdown <ChevronUp className="w-3.5 h-3.5" />
                           </>
                         ) : (
                           <>
-                            View Explainability <ChevronDown className="w-3.5 h-3.5" />
+                            {isUnmatched ? 'View Gap Analysis' : 'View Explainability'} <ChevronDown className="w-3.5 h-3.5" />
                           </>
                         )}
                       </button>
@@ -427,13 +692,40 @@ export default function MatchingDashboard() {
                   {/* Expandable ML Explainability Drawer */}
                   {isExpanded && (
                     <div className="mt-5 p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-in fade-in duration-200">
+                      {/* Reason / Decision Summary */}
                       <div>
                         <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                          <Info className="w-3.5 h-3.5 text-blue-600" />
-                          Experience Assessment & Decision Summary
+                          {isUnmatched ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                              Unmatching Rationale &amp; Skill Gap Assessment
+                            </>
+                          ) : (
+                            <>
+                              <Info className="w-3.5 h-3.5 text-blue-600" />
+                              Experience Assessment &amp; Decision Summary
+                            </>
+                          )}
                         </div>
-                        <p className="text-sm text-slate-700 bg-white p-3 rounded-xl border border-slate-200">
-                          {cand.match_summary || cand.experience_fit || 'Evaluated using Random Forest Classifier against job requirements.'}
+                        <p className={`text-sm p-3.5 rounded-xl border leading-relaxed ${
+                          isUnmatched 
+                            ? 'bg-rose-50 text-rose-900 border-rose-200' 
+                            : 'bg-white text-slate-700 border-slate-200'
+                        }`}>
+                          {isUnmatched ? (
+                            <span>
+                              <strong>Low Match Assessment: </strong>
+                              {cand.missing_skills && cand.missing_skills.length > 0 ? (
+                                <>
+                                  Candidate lacks {cand.missing_skills.length} core requirement{cand.missing_skills.length > 1 ? 's' : ''} ({cand.missing_skills.join(', ')}). 
+                                </>
+                              ) : null}
+                              {' '}Experience status: {cand.experience_fit || 'N/A'}. 
+                              Random Forest classification flagged significant feature divergence from job criteria.
+                            </span>
+                          ) : (
+                            cand.match_summary || cand.experience_fit || 'Evaluated using Random Forest Classifier against job requirements.'
+                          )}
                         </p>
                       </div>
 
@@ -441,31 +733,33 @@ export default function MatchingDashboard() {
                       <div>
                         <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                          Evaluation Metrics
+                          Evaluation Metrics Breakdown
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
                             <div className="text-[11px] text-slate-500 font-semibold">Candidate Exp</div>
                             <div className="text-sm font-bold text-slate-900 mt-0.5">
                               {cand.experience_years ? `${cand.experience_years} Years` : '0 Years'}
                             </div>
                           </div>
 
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
                             <div className="text-[11px] text-slate-500 font-semibold">Experience Fit</div>
-                            <div className="text-xs font-bold text-slate-900 mt-0.5">
+                            <div className={`text-xs font-bold mt-0.5 ${
+                              cand.experience_fit?.includes('Under') ? 'text-rose-600' : 'text-slate-900'
+                            }`}>
                               {cand.experience_fit || 'Meets Requirement'}
                             </div>
                           </div>
 
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
-                            <div className="text-[11px] text-slate-500 font-semibold">Matched Skills Count</div>
+                          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+                            <div className="text-[11px] text-slate-500 font-semibold">Matched Skills</div>
                             <div className="text-sm font-bold text-emerald-600 mt-0.5">
-                              {(cand.matched_skills || []).length} Skills
+                              {(cand.matched_skills || []).length} / {((cand.matched_skills || []).length + (cand.missing_skills || []).length)} Skills
                             </div>
                           </div>
 
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
                             <div className="text-[11px] text-slate-500 font-semibold">ML Classifier</div>
                             <div className="text-xs font-bold text-indigo-600 mt-0.5 truncate" title={cand.model_used}>
                               {cand.model_used || 'RandomForest'}
