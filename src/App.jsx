@@ -10,9 +10,10 @@ import JobsList from './pages/JobsList';
 import CreateJob from './pages/CreateJob';
 import ResumeUpload from './pages/ResumeUpload';
 import MatchingDashboard from './pages/MatchingDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 export default function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
@@ -31,11 +32,21 @@ export default function App() {
           {/* Public Routes */}
           <Route
             path="/login"
-            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
+            element={isAuthenticated ? <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace /> : <Login />}
           />
           <Route
             path="/register"
             element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Register />}
+          />
+
+          {/* Admin Protected Route */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
           />
 
           {/* Protected Routes */}
@@ -83,7 +94,7 @@ export default function App() {
           {/* Default Redirection */}
           <Route
             path="/"
-            element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />}
+            element={<Navigate to={isAuthenticated ? (isAdmin ? "/admin" : "/dashboard") : "/login"} replace />}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

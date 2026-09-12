@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export default function Navbar() {
-  const { user, isAuthenticated, isRecruiter, logout } = useAuth();
+  const { user, isAuthenticated, isRecruiter, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -53,10 +53,17 @@ export default function Navbar() {
             {/* Navigation links */}
             {isAuthenticated && (
               <div className="hidden md:flex items-center gap-1">
-                <Link to="/dashboard" className={navLinkClass('/dashboard')}>
-                  <LayoutDashboard className="w-4 h-4" />
-                  Dashboard
-                </Link>
+                {isAdmin ? (
+                  <Link to="/admin" className={navLinkClass('/admin')}>
+                    <LayoutDashboard className="w-4 h-4 text-amber-600" />
+                    Admin Panel
+                  </Link>
+                ) : (
+                  <Link to="/dashboard" className={navLinkClass('/dashboard')}>
+                    <LayoutDashboard className="w-4 h-4" />
+                    Dashboard
+                  </Link>
+                )}
                 <Link to="/jobs" className={navLinkClass('/jobs')}>
                   <Briefcase className="w-4 h-4" />
                   Jobs

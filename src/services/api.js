@@ -42,6 +42,12 @@ export const authAPI = {
   getMe: () => api.get('/auth/me'),
 };
 
+// Admin Users endpoints
+export const usersAPI = {
+  getAll: (skip = 0, limit = 50) => api.get(`/users?skip=${skip}&limit=${limit}`),
+  getById: (id) => api.get(`/users/${id}`),
+};
+
 // Jobs endpoints
 export const jobsAPI = {
   getAll: (skip = 0, limit = 50) => api.get(`/jobs?skip=${skip}&limit=${limit}`),

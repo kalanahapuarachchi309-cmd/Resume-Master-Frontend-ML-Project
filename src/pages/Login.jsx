@@ -20,8 +20,12 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate(from, { replace: true });
+      const loggedUser = await login(email, password);
+      if (loggedUser?.role === 'ADMIN') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err) {
       console.error(err);
       setError(

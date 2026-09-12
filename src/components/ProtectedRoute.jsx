@@ -2,8 +2,8 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-export default function ProtectedRoute({ children, requireRecruiter = false }) {
-  const { isAuthenticated, isRecruiter, loading } = useAuth();
+export default function ProtectedRoute({ children, requireRecruiter = false, requireAdmin = false }) {
+  const { isAuthenticated, isRecruiter, isAdmin, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -16,6 +16,10 @@ export default function ProtectedRoute({ children, requireRecruiter = false }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (requireAdmin && !isAdmin) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   if (requireRecruiter && !isRecruiter) {
